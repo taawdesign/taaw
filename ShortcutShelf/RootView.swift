@@ -164,12 +164,10 @@ struct RootView: View {
     }
     .navigationTitle(listTitle)
     .toolbar {
-      ToolbarItem(placement: .automatic) {
-        if let selectedShortcut,
-           let name = selectedShortcut.shortcutName,
-           let runURL = ShortcutLinkBuilder.link(for: name, kind: .run) {
-          Button("Run", systemImage: "play.fill") { openURL(runURL) }
-        }
+      if let selectedShortcut,
+         let name = selectedShortcut.shortcutName,
+         let runURL = ShortcutLinkBuilder.link(for: name, kind: .run) {
+        Button("Run", systemImage: "play.fill") { openURL(runURL) }
       }
     }
   }
