@@ -155,19 +155,6 @@ struct RootView: View {
       }
     }
     .navigationTitle(listTitle)
-    .toolbar(content: {
-      ToolbarItemGroup(placement: .primaryAction) {
-        if let selectedShortcut,
-           let name = selectedShortcut.shortcutName,
-           let runURL = ShortcutLinkBuilder.link(for: name, kind: .run) {
-          Button {
-            openURL(runURL)
-          } label: {
-            Label("Run", systemImage: "play.fill")
-          }
-        }
-      }
-    })
   }
 
   private var listTitle: String {
