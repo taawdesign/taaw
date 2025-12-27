@@ -13,16 +13,16 @@ jobs:
     runs-on: macos-latest
     
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       
-      - name: Create Xcode Project
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      
+      - name: Create Project Files
         run: |
-          # Create project directory structure
-          mkdir -p MyApp/MyApp.xcodeproj
-          mkdir -p MyApp/MyApp
+          mkdir -p MyApp/Sources
           
-          # Process uploaded file - remove @main if present
+          # Process uploaded file
           if [ -f "Sources/${{ github.event.inputs.file_name }}" ]; then
             cat "Sources/${{ github.event.inputs.file_name }}" | awk '
               /@main/ { skip=1; next }
@@ -30,23 +30,25 @@ jobs:
               skip && /{/ { brace++ }
               skip && /}/ { brace--; if(brace<=0) { skip=0 }; next }
               !skip { print }
-            ' > MyApp/MyApp/ContentView.swift
+            ' > MyApp/Sources/ContentView.swift
+            
             echo "=== ContentView.swift ==="
-            cat MyApp/MyApp/ContentView.swift
+            cat MyApp/Sources/ContentView.swift
           else
-            cat > MyApp/MyApp/ContentView.swift << 'EOF'
+            cat > MyApp/Sources/ContentView.swift << 'SWIFT'
           import SwiftUI
           struct ContentView: View {
               var body: some View {
                   Text("Hello World")
               }
           }
-          EOF
+          SWIFT
           fi
           
-          # Create App.swift
-          cat > MyApp/MyApp/MyAppApp.swift << 'EOF'
+          # Create App entry point
+          cat > MyApp/Sources/MyAppApp.swift << 'SWIFT'
           import SwiftUI
+          
           @main
           struct MyAppApp: App {
               var body: some Scene {
@@ -55,272 +57,108 @@ jobs:
                   }
               }
           }
-          EOF
+          SWIFT
           
-          # Create Assets.xcassets
-          mkdir -p MyApp/MyApp/Assets.xcassets
-          cat > MyApp/MyApp/Assets.xcassets/Contents.json << 'EOF'
-          {"info":{"version":1,"author":"xcode"}}
-          EOF
+          # Create Assets folder
+          mkdir -p MyApp/Sources/Assets.xcassets
+          echo '{"info":{"version":1,"author":"xcode"}}' > MyApp/Sources/Assets.xcassets/Contents.json
           
-          # Create project.pbxproj
-          cat > MyApp/MyApp.xcodeproj/project.pbxproj << 'EOF'
-          // !$*UTF8*$!
-          {
-            archiveVersion = 1;
-            classes = {};
-            objectVersion = 56;
-            objects = {
-              13B07F961A680F5B00A75B9A /* MyAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyAppApp.swift; sourceTree = "<group>"; };
-              13B07F971A680F5B00A75B9A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-              13B07F981A680F5B00A75B9A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-              13B07FAF1A68108700A75B9A /* MyApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MyApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
-              
-              13B07FAE1A68108700A75B9A /* Products */ = {
-                isa = PBXGroup;
-                children = (13B07FAF1A68108700A75B9A /* MyApp.app */);
-                name = Products;
-                sourceTree = "<group>";
-              };
-              
-              13B07FB01A68108700A75B9A /* MyApp */ = {
-                isa = PBXGroup;
-                children = (
-                  13B07F961A680F5B00A75B9A /* MyAppApp.swift */,
-                  13B07F971A680F5B00A75B9A /* ContentView.swift */,
-                  13B07F981A680F5B00A75B9A /* Assets.xcassets */,
-                );
-                path = MyApp;
-                sourceTree = "<group>";
-              };
-              
-              83CBB9F61A601CBA00E9B192 = {
-                isa = PBXGroup;
-                children = (
-                  13B07FB01A68108700A75B9A /* MyApp */,
-                  13B07FAE1A68108700A75B9A /* Products */,
-                );
-                sourceTree = "<group>";
-              };
-              
-              13B07F8C1A680F5B00A75B9A /* Build Sources */ = {
-                isa = PBXSourcesBuildPhase;
-                buildActionMask = 2147483647;
-                files = (
-                  13B07F9C1A680F5B00A75B9A /* MyAppApp.swift in Sources */,
-                  13B07F9D1A680F5B00A75B9A /* ContentView.swift in Sources */,
-                );
-                runOnlyForDeploymentPostprocessing = 0;
-              };
-              
-              13B07F9C1A680F5B00A75B9A /* MyAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B07F961A680F5B00A75B9A /* MyAppApp.swift */; };
-              13B07F9D1A680F5B00A75B9A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B07F971A680F5B00A75B9A /* ContentView.swift */; };
-              13B07F9E1A680F5B00A75B9A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07F981A680F5B00A75B9A /* Assets.xcassets */; };
-              
-              13B07F8D1A680F5B00A75B9A /* Resources */ = {
-                isa = PBXResourcesBuildPhase;
-                buildActionMask = 2147483647;
-                files = (13B07F9E1A680F5B00A75B9A /* Assets.xcassets in Resources */);
-                runOnlyForDeploymentPostprocessing = 0;
-              };
-              
-              13B07F8E1A680F5B00A75B9A /* Frameworks */ = {
-                isa = PBXFrameworksBuildPhase;
-                buildActionMask = 2147483647;
-                files = ();
-                runOnlyForDeploymentPostprocessing = 0;
-              };
-              
-              13B07F8F1A680F5B00A75B9A /* MyApp */ = {
-                isa = PBXNativeTarget;
-                buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "MyApp" */;
-                buildPhases = (
-                  13B07F8C1A680F5B00A75B9A /* Build Sources */,
-                  13B07F8D1A680F5B00A75B9A /* Resources */,
-                  13B07F8E1A680F5B00A75B9A /* Frameworks */,
-                );
-                buildRules = ();
-                dependencies = ();
-                name = MyApp;
-                productName = MyApp;
-                productReference = 13B07FAF1A68108700A75B9A /* MyApp.app */;
-                productType = "com.apple.product-type.application";
-              };
-              
-              83CBB9F71A601CBA00E9B192 /* Project object */ = {
-                isa = PBXProject;
-                buildConfigurationList = 83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "MyApp" */;
-                compatibilityVersion = "Xcode 14.0";
-                developmentRegion = en;
-                hasScannedForEncodings = 0;
-                knownRegions = (en, Base);
-                mainGroup = 83CBB9F61A601CBA00E9B192;
-                productRefGroup = 13B07FAE1A68108700A75B9A /* Products */;
-                projectDirPath = "";
-                projectRoot = "";
-                targets = (13B07F8F1A680F5B00A75B9A /* MyApp */);
-              };
-              
-              83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "MyApp" */ = {
-                isa = XCConfigurationList;
-                buildConfigurations = (
-                  83CBBA201A601CBA00E9B192 /* Debug */,
-                  83CBBA211A601CBA00E9B192 /* Release */,
-                );
-                defaultConfigurationIsVisible = 0;
-                defaultConfigurationName = Release;
-              };
-              
-              13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "MyApp" */ = {
-                isa = XCConfigurationList;
-                buildConfigurations = (
-                  13B07F941A680F5B00A75B9A /* Debug */,
-                  13B07F951A680F5B00A75B9A /* Release */,
-                );
-                defaultConfigurationIsVisible = 0;
-                defaultConfigurationName = Release;
-              };
-              
-              83CBBA201A601CBA00E9B192 /* Debug */ = {
-                isa = XCBuildConfiguration;
-                buildSettings = {
-                  ALWAYS_SEARCH_USER_PATHS = NO;
-                  CLANG_ENABLE_MODULES = YES;
-                  CODE_SIGN_IDENTITY = "-";
-                  COPY_PHASE_STRIP = NO;
-                  ENABLE_STRICT_OBJC_MSGSEND = YES;
-                  ENABLE_TESTABILITY = YES;
-                  GCC_DYNAMIC_NO_PIC = NO;
-                  GCC_OPTIMIZATION_LEVEL = 0;
-                  GCC_PREPROCESSOR_DEFINITIONS = ("DEBUG=1", "$(inherited)");
-                  INFOPLIST_FILE = "";
-                  IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-                  MTL_ENABLE_DEBUG_INFO = YES;
-                  ONLY_ACTIVE_ARCH = YES;
-                  SDKROOT = iphoneos;
-                  SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-                  SWIFT_VERSION = 5.0;
-                };
-                name = Debug;
-              };
-              
-              83CBBA211A601CBA00E9B192 /* Release */ = {
-                isa = XCBuildConfiguration;
-                buildSettings = {
-                  ALWAYS_SEARCH_USER_PATHS = NO;
-                  CLANG_ENABLE_MODULES = YES;
-                  CODE_SIGN_IDENTITY = "-";
-                  COPY_PHASE_STRIP = YES;
-                  ENABLE_STRICT_OBJC_MSGSEND = YES;
-                  INFOPLIST_FILE = "";
-                  IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-                  MTL_ENABLE_DEBUG_INFO = NO;
-                  SDKROOT = iphoneos;
-                  SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
-                  SWIFT_VERSION = 5.0;
-                  VALIDATE_PRODUCT = YES;
-                };
-                name = Release;
-              };
-              
-              13B07F941A680F5B00A75B9A /* Debug */ = {
-                isa = XCBuildConfiguration;
-                buildSettings = {
-                  ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-                  CODE_SIGN_IDENTITY = "-";
-                  CODE_SIGNING_ALLOWED = NO;
-                  CODE_SIGNING_REQUIRED = NO;
-                  CURRENT_PROJECT_VERSION = 1;
-                  GENERATE_INFOPLIST_FILE = YES;
-                  INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-                  INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-                  INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-                  INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-                  INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-                  IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-                  LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
-                  MARKETING_VERSION = 1.0;
-                  PRODUCT_BUNDLE_IDENTIFIER = "com.swiftide.myapp";
-                  PRODUCT_NAME = "$(TARGET_NAME)";
-                  SDKROOT = iphoneos;
-                  SWIFT_EMIT_LOC_STRINGS = YES;
-                  SWIFT_VERSION = 5.0;
-                  TARGETED_DEVICE_FAMILY = "1,2";
-                };
-                name = Debug;
-              };
-              
-              13B07F951A680F5B00A75B9A /* Release */ = {
-                isa = XCBuildConfiguration;
-                buildSettings = {
-                  ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-                  CODE_SIGN_IDENTITY = "-";
-                  CODE_SIGNING_ALLOWED = NO;
-                  CODE_SIGNING_REQUIRED = NO;
-                  CURRENT_PROJECT_VERSION = 1;
-                  GENERATE_INFOPLIST_FILE = YES;
-                  INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-                  INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-                  INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-                  INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-                  INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-                  IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-                  LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
-                  MARKETING_VERSION = 1.0;
-                  PRODUCT_BUNDLE_IDENTIFIER = "com.swiftide.myapp";
-                  PRODUCT_NAME = "$(TARGET_NAME)";
-                  SDKROOT = iphoneos;
-                  SWIFT_EMIT_LOC_STRINGS = YES;
-                  SWIFT_VERSION = 5.0;
-                  TARGETED_DEVICE_FAMILY = "1,2";
-                };
-                name = Release;
-              };
-            };
-            rootObject = 83CBB9F71A601CBA00E9B192 /* Project object */;
-          }
-          EOF
+          # Create XcodeGen spec
+          cat > MyApp/project.yml << 'YAML'
+          name: MyApp
+          options:
+            bundleIdPrefix: com.swiftide
+            deploymentTarget:
+              iOS: "16.0"
+          
+          targets:
+            MyApp:
+              type: application
+              platform: iOS
+              sources:
+                - Sources
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: com.swiftide.myapp
+                  MARKETING_VERSION: "1.0"
+                  CURRENT_PROJECT_VERSION: "1"
+                  CODE_SIGN_IDENTITY: ""
+                  CODE_SIGNING_REQUIRED: "NO"
+                  CODE_SIGNING_ALLOWED: "NO"
+                  INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+                  INFOPLIST_KEY_UIApplicationSceneManifest_Generation: "YES"
+                  GENERATE_INFOPLIST_FILE: "YES"
+                  SWIFT_VERSION: "5.0"
+          YAML
+          
+          echo "=== project.yml ==="
+          cat MyApp/project.yml
 
-      - name: Build with xcodebuild
+      - name: Generate Xcode Project
+        run: |
+          cd MyApp
+          xcodegen generate
+          echo "Project generated!"
+          ls -la
+          ls -la MyApp.xcodeproj/
+
+      - name: Build for Simulator
         run: |
           cd MyApp
           
+          # List available schemes
+          xcodebuild -list -project MyApp.xcodeproj
+          
+          # Build
           xcodebuild \
             -project MyApp.xcodeproj \
             -scheme MyApp \
             -sdk iphonesimulator \
             -configuration Debug \
             -derivedDataPath build \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
-            CODE_SIGN_IDENTITY="-" \
+            -arch arm64 \
+            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             build
           
-          echo "Build completed!"
+          echo "Build complete!"
           find build -name "*.app" -type d
-          
+
       - name: Upload to Appetize
         env:
           APPETIZE_TOKEN: ${{ secrets.APPETIZE_TOKEN }}
         run: |
           APP_PATH=$(find MyApp/build -name "*.app" -type d | head -1)
-          echo "Found app at: $APP_PATH"
+          echo "Found app: $APP_PATH"
           
-          zip -r app.zip "$APP_PATH"
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found!"
+            exit 1
+          fi
+          
+          # Show app contents
+          ls -la "$APP_PATH"
+          
+          # Zip from inside the .app directory for correct structure
+          cd "$APP_PATH"
+          zip -r ../../../app.zip .
+          cd ../../..
           
           echo "Uploading to Appetize..."
           RESPONSE=$(curl -s "https://api.appetize.io/v1/apps/zvc4brtsspoktczlbrs54s3mhi?token=$APPETIZE_TOKEN" \
             -F "file=@app.zip" \
             -F "platform=ios")
           
-          echo "Response: $RESPONSE"
+          echo "Response:"
+          echo "$RESPONSE"
           
           if echo "$RESPONSE" | grep -q "publicKey"; then
-            echo "✅ Success!"
+            echo "✅ Upload successful!"
           else
-            echo "Trying to create new app..."
-            curl -s "https://api.appetize.io/v1/apps?token=$APPETIZE_TOKEN" \
+            echo "Creating new app..."
+            RESPONSE2=$(curl -s "https://api.appetize.io/v1/apps?token=$APPETIZE_TOKEN" \
               -F "file=@app.zip" \
-              -F "platform=ios"
+              -F "platform=ios")
+            echo "$RESPONSE2"
           fi
