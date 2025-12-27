@@ -14,31 +14,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Show available Xcode versions
-        run: ls /Applications | grep Xcode
-      
       - name: Create SwiftUI App Project
         run: |
-          mkdir -p BuildApp/BuildApp
+          mkdir -p BuildApp
           
-          # Copy the uploaded Swift file as ContentView
+          # Read the uploaded file and remove @main app struct if present
           if [ -f "Sources/${{ github.event.inputs.file_name }}" ]; then
-            cp "Sources/${{ github.event.inputs.file_name }}" BuildApp/BuildApp/ContentView.swift
+            # Remove @main, the App struct, and keep only the views
+            sed -E '/@main/d; /struct.*App.*\{/,/^struct|^$|^\/\//{ /WindowGroup|Scene|var body: some Scene/d; }' \
+              "Sources/${{ github.event.inputs.file_name }}" > BuildApp/ContentView.swift
+            
+            # If sed didn't work well, use a smarter approach with awk
+            cat "Sources/${{ github.event.inputs.file_name }}" | awk '
+              /@main/ { skip=1; next }
+              /struct [A-Za-z]+App.*:.*App/ { skip=1; brace=1; next }
+              skip && /{/ { brace++ }
+              skip && /}/ { brace--; if(brace<=0) { skip=0 }; next }
+              !skip { print }
+            ' > BuildApp/ContentView.swift
+            
+            echo "=== Processed ContentView.swift ==="
+            cat BuildApp/ContentView.swift
+            echo "==================================="
           else
-            echo "File not found, creating default"
-            cat > BuildApp/BuildApp/ContentView.swift << 'SWIFT'
-          import SwiftUI
-          struct ContentView: View {
-              var body: some View {
-                  Text("Hello World")
-              }
-          }
-          SWIFT
+            echo "Source file not found!"
+            exit 1
           fi
           
-          # Create App entry point (separate from ContentView)
-          cat > BuildApp/BuildApp/App.swift << 'SWIFT'
+          # Create App entry point
+          cat > BuildApp/App.swift << 'SWIFT'
           import SwiftUI
+          
           @main
           struct BuildAppApp: App {
               var body: some Scene {
@@ -50,7 +56,7 @@ jobs:
           SWIFT
           
           # Create Info.plist
-          cat > BuildApp/BuildApp/Info.plist << 'PLIST'
+          cat > BuildApp/Info.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -82,70 +88,73 @@ jobs:
               <key>UISupportedInterfaceOrientations</key>
               <array>
                   <string>UIInterfaceOrientationPortrait</string>
+                  <string>UIInterfaceOrientationLandscapeLeft</string>
+                  <string>UIInterfaceOrientationLandscapeRight</string>
               </array>
           </dict>
           </plist>
           PLIST
-          
-          # Create Package.swift for building
-          cat > BuildApp/Package.swift << 'PACKAGE'
-          // swift-tools-version:5.9
-          import PackageDescription
-          let package = Package(
-              name: "BuildApp",
-              platforms: [.iOS(.v16)],
-              products: [
-                  .library(name: "BuildApp", targets: ["BuildApp"])
-              ],
-              targets: [
-                  .target(name: "BuildApp", path: "BuildApp")
-              ]
-          )
-          PACKAGE
 
-      - name: Build with swiftc directly
+      - name: Build for iOS Simulator
         run: |
           cd BuildApp
           
-          # Find iOS SDK
+          # Find iOS Simulator SDK
           SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
-          echo "SDK: $SDK_PATH"
+          echo "Using SDK: $SDK_PATH"
           
-          # Compile Swift files to object files
-          swiftc \
+          # Get the target triple for simulator
+          ARCH="arm64"
+          TARGET="${ARCH}-apple-ios16.0-simulator"
+          
+          echo "Building for target: $TARGET"
+          
+          # Compile with proper flags for iOS Simulator
+          xcrun swiftc \
             -sdk "$SDK_PATH" \
-            -target arm64-apple-ios16.0-simulator \
+            -target "$TARGET" \
             -parse-as-library \
             -emit-executable \
             -o BuildApp \
-            BuildApp/App.swift \
-            BuildApp/ContentView.swift \
-            -framework SwiftUI \
-            -framework Foundation
+            App.swift \
+            ContentView.swift
+          
+          echo "Build successful!"
+          ls -la BuildApp
             
       - name: Create .app bundle
         run: |
           mkdir -p BuildApp.app
-          cp BuildApp/BuildApp BuildApp.app/
-          cp BuildApp/BuildApp/Info.plist BuildApp.app/
+          mv BuildApp/BuildApp BuildApp.app/BuildApp
+          cp BuildApp/Info.plist BuildApp.app/Info.plist
           
-          # Show what we built
+          echo "=== App bundle contents ==="
           ls -la BuildApp.app/
           
-      - name: Zip and Upload to Appetize
+      - name: Upload to Appetize
         env:
           APPETIZE_TOKEN: ${{ secrets.APPETIZE_TOKEN }}
         run: |
+          # Zip the app bundle
           zip -r app.zip BuildApp.app
           
-          echo "Uploading to Appetize..."
+          echo "Uploading to Appetize.io..."
           
+          # Upload to Appetize (update existing app)
           RESPONSE=$(curl -s -X POST \
             --http1.1 \
             -H "Authorization: $APPETIZE_TOKEN" \
             -F "file=@app.zip" \
             -F "platform=ios" \
-            -F "publicKey=zvc4brtsspoktczlbrs54s3mhi" \
             "https://api.appetize.io/v2/apps/zvc4brtsspoktczlbrs54s3mhi")
           
-          echo "Response: $RESPONSE"
+          echo "Appetize Response:"
+          echo "$RESPONSE"
+          
+          # Check if upload was successful
+          if echo "$RESPONSE" | grep -q "publicKey"; then
+            echo "✅ Upload successful!"
+          else
+            echo "❌ Upload may have failed"
+            exit 1
+          fi
