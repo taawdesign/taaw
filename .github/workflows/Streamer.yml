@@ -14,43 +14,138 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.2.app
+      - name: Show available Xcode versions
+        run: ls /Applications | grep Xcode
       
-      - name: Create Xcode Project
+      - name: Create SwiftUI App Project
         run: |
-          mkdir -p MyApp/MyApp
-          cp Sources/${{ github.event.inputs.file_name }} MyApp/MyApp/ContentView.swift
+          mkdir -p BuildApp/BuildApp
           
-          # Create minimal app structure
-          cat > MyApp/MyApp/MyAppApp.swift << 'EOF'
+          # Copy the uploaded Swift file as ContentView
+          if [ -f "Sources/${{ github.event.inputs.file_name }}" ]; then
+            cp "Sources/${{ github.event.inputs.file_name }}" BuildApp/BuildApp/ContentView.swift
+          else
+            echo "File not found, creating default"
+            cat > BuildApp/BuildApp/ContentView.swift << 'SWIFT'
+          import SwiftUI
+          struct ContentView: View {
+              var body: some View {
+                  Text("Hello World")
+              }
+          }
+          SWIFT
+          fi
+          
+          # Create App entry point (separate from ContentView)
+          cat > BuildApp/BuildApp/App.swift << 'SWIFT'
           import SwiftUI
           @main
-          struct MyAppApp: App {
+          struct BuildAppApp: App {
               var body: some Scene {
                   WindowGroup {
                       ContentView()
                   }
               }
           }
-          EOF
+          SWIFT
           
-          # Create project.pbxproj (this is simplified - you'd need a template)
+          # Create Info.plist
+          cat > BuildApp/BuildApp/Info.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>en</string>
+              <key>CFBundleExecutable</key>
+              <string>BuildApp</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.swiftide.buildapp</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>BuildApp</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UILaunchScreen</key>
+              <dict/>
+              <key>UIRequiredDeviceCapabilities</key>
+              <array>
+                  <string>arm64</string>
+              </array>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+              </array>
+          </dict>
+          </plist>
+          PLIST
           
-      - name: Build for Simulator
+          # Create Package.swift for building
+          cat > BuildApp/Package.swift << 'PACKAGE'
+          // swift-tools-version:5.9
+          import PackageDescription
+          let package = Package(
+              name: "BuildApp",
+              platforms: [.iOS(.v16)],
+              products: [
+                  .library(name: "BuildApp", targets: ["BuildApp"])
+              ],
+              targets: [
+                  .target(name: "BuildApp", path: "BuildApp")
+              ]
+          )
+          PACKAGE
+
+      - name: Build with swiftc directly
         run: |
-          cd MyApp
-          xcodebuild -scheme MyApp -sdk iphonesimulator -configuration Debug -derivedDataPath build
+          cd BuildApp
           
-      - name: Upload to Appetize
+          # Find iOS SDK
+          SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          echo "SDK: $SDK_PATH"
+          
+          # Compile Swift files to object files
+          swiftc \
+            -sdk "$SDK_PATH" \
+            -target arm64-apple-ios16.0-simulator \
+            -parse-as-library \
+            -emit-executable \
+            -o BuildApp \
+            BuildApp/App.swift \
+            BuildApp/ContentView.swift \
+            -framework SwiftUI \
+            -framework Foundation
+            
+      - name: Create .app bundle
         run: |
-          APP_PATH=$(find build -name "*.app" -type d | head -1)
-          zip -r app.zip "$APP_PATH"
+          mkdir -p BuildApp.app
+          cp BuildApp/BuildApp BuildApp.app/
+          cp BuildApp/BuildApp/Info.plist BuildApp.app/
           
-          curl -X POST \
+          # Show what we built
+          ls -la BuildApp.app/
+          
+      - name: Zip and Upload to Appetize
+        env:
+          APPETIZE_TOKEN: ${{ secrets.APPETIZE_TOKEN }}
+        run: |
+          zip -r app.zip BuildApp.app
+          
+          echo "Uploading to Appetize..."
+          
+          RESPONSE=$(curl -s -X POST \
             --http1.1 \
-            -H "Authorization: ${{ secrets.APPETIZE_TOKEN }}" \
+            -H "Authorization: $APPETIZE_TOKEN" \
             -F "file=@app.zip" \
             -F "platform=ios" \
             -F "publicKey=zvc4brtsspoktczlbrs54s3mhi" \
-            https://api.appetize.io/v2/apps
+            "https://api.appetize.io/v2/apps/zvc4brtsspoktczlbrs54s3mhi")
+          
+          echo "Response: $RESPONSE"
