@@ -175,7 +175,7 @@ class FreeAIClient: ObservableObject {
     }
 }
 
-// MARK: - 2. STREAMING EDGE TTS ENGINE (Swift 6 Fixed)
+// MARK: - 2. STREAMING EDGE TTS ENGINE
 
 @MainActor
 class StreamingEdgeTTS: NSObject, ObservableObject, URLSessionWebSocketDelegate {
@@ -374,6 +374,7 @@ struct ProReaderApp: App {
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor(red: 0.08, green: 0.08, blue: 0.1, alpha: 1.0)
         appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
+        appearance.shadowColor = .clear
         
         UINavigationBar.appearance().standardAppearance = appearance
         UINavigationBar.appearance().compactAppearance = appearance
@@ -396,56 +397,65 @@ struct ProReaderView: View {
     
     let bgColor = Color(red: 0.08, green: 0.08, blue: 0.1)
     let cardColor = Color(red: 0.12, green: 0.12, blue: 0.14)
+    let panelColor = Color(red: 0.14, green: 0.14, blue: 0.16)
     let accentGradient = LinearGradient(colors: [Color.blue, Color.purple], startPoint: .topLeading, endPoint: .bottomTrailing)
-
+    
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
+                // 1. BACKGROUND
                 bgColor.ignoresSafeArea()
                 
+                // 2. TEXT EDITOR
                 VStack(spacing: 20) {
-                    ScrollView {
-                        TextEditor(text: $textContent)
-                            .font(.system(.body, design: .serif))
-                            .lineSpacing(8)
-                            .scrollContentBackground(.hidden)
-                            .foregroundColor(.white.opacity(0.9))
-                            .focused($isTextFocused)
-                            .padding()
-                            .frame(minHeight: 300)
-                    }
-                    .background(cardColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .shadow(color: Color.black.opacity(0.2), radius: 10, y: 5)
-                    .padding(.horizontal)
-                    Spacer()
+                    TextEditor(text: $textContent)
+                        .font(.system(.body, design: .serif))
+                        .lineSpacing(8)
+                        .scrollContentBackground(.hidden)
+                        .foregroundColor(.white.opacity(0.9))
+                        .focused($isTextFocused)
+                        .padding()
+                        .background(cardColor)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .shadow(color: Color.black.opacity(0.2), radius: 10, y: 5)
+                        .padding(.horizontal)
+                        .padding(.bottom, 130) // Space for player + AI tab height
                 }.padding(.top)
-
-                ProPlayerPanel(tts: tts, text: textContent, accentGradient: accentGradient)
+                
+                // 3. AI DRAWER (Layer 2 - Behind Player)
+                if showAIChat {
+                    Color.black.opacity(0.3).ignoresSafeArea()
+                        .onTapGesture { withAnimation { showAIChat = false } }
+                        .zIndex(1)
+                    
+                    AIOverlayPanel(
+                        client: aiClient,
+                        contextText: textContent,
+                        showAIChat: $showAIChat,
+                        panelColor: panelColor
+                    )
+                    .transition(.move(edge: .bottom))
+                    .zIndex(2) // Sits visually behind layer 3
+                }
+                
+                // 4. PLAYER PANEL (Layer 3 - On Top)
+                ProPlayerPanel(
+                    tts: tts,
+                    textContent: $textContent,
+                    showAIChat: $showAIChat,
+                    showWebInput: $showWebInput,
+                    showPDFImporter: $showPDFImporter,
+                    accentGradient: accentGradient,
+                    panelColor: panelColor
+                )
+                .zIndex(3) // Topmost Z Index
+                
             }
             .navigationTitle("Pro Reader")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { showAIChat = true } label: {
-                        // MARK: MINIMALIST AI BUTTON
-                        Text("AI")
-                            .font(.system(size: 20, weight: .heavy, design: .rounded))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    Menu {
-                        Button(action: { showWebInput = true }) { Label("Web Article", systemImage: "safari") }
-                        Button(action: { showPDFImporter = true }) { Label("PDF Document", systemImage: "doc.text") }
-                        Button(action: { textContent = UIPasteboard.general.string ?? textContent }) { Label("Paste", systemImage: "doc.on.clipboard") }
-                        Divider()
-                        Button(role: .destructive, action: { textContent = "" }) { Label("Clear Text", systemImage: "trash") }
-                    } label: {
-                        Image(systemName: "ellipsis.circle.fill").font(.title3).foregroundColor(.white.opacity(0.8))
-                    }
-                }
                 ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done") { isTextFocused = false } }
             }
-            .sheet(isPresented: $showAIChat) { AIChatView(client: aiClient, contextText: textContent) }
             .alert("Web URL", isPresented: $showWebInput) {
                 TextField("https://...", text: $webURLString).keyboardType(.URL)
                 Button("Load") {
@@ -471,28 +481,86 @@ struct ProReaderView: View {
 
 struct ProPlayerPanel: View {
     @ObservedObject var tts: StreamingEdgeTTS
-    var text: String
+    @Binding var textContent: String
+    @Binding var showAIChat: Bool
+    @Binding var showWebInput: Bool
+    @Binding var showPDFImporter: Bool
     var accentGradient: LinearGradient
+    var panelColor: Color
     
     var body: some View {
-        VStack(spacing: 16) {
-            Menu {
-                ForEach(tts.voices, id: \.1) { name, id in
-                    Button { tts.selectedVoice = id; if tts.state == .playing { tts.play(text: text) } }
-                    label: { HStack { Text(name); if tts.selectedVoice == id { Image(systemName: "checkmark") } } }
+        VStack(spacing: 20) {
+            // --- CONTROL ROW ---
+            HStack(spacing: 12) {
+                Spacer()
+                
+                // 1. LEFT: AI BUTTON
+                Button {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                        showAIChat.toggle()
+                    }
+                } label: {
+                    ZStack {
+                        // Background matches inactive state
+                        Circle().fill(Color.white.opacity(0.1)).frame(width: 44, height: 44)
+                        
+                        // Icon changes based on state
+                        if showAIChat {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.white)
+                        } else {
+                            Text("AI")
+                                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                                .foregroundColor(.white)
+                        }
+                    }
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "waveform.circle.fill").symbolRenderingMode(.hierarchical)
-                    Text(tts.voices.first(where: { $0.1 == tts.selectedVoice })?.0 ?? "Voice").font(.subheadline.weight(.medium))
-                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                
+                // 2. CENTER: VOICE NAME
+                Menu {
+                    ForEach(tts.voices, id: \.1) { name, id in
+                        Button { tts.selectedVoice = id; if tts.state == .playing { tts.play(text: textContent) } }
+                        label: { HStack { Text(name); if tts.selectedVoice == id { Image(systemName: "checkmark") } } }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(tts.voices.first(where: { $0.1 == tts.selectedVoice })?.0 ?? "Voice")
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                        // CHEVRON REMOVED HERE
+                    }
+                    .foregroundColor(.white.opacity(0.9))
+                    .padding(.horizontal, 20)
+                    .frame(height: 44)
+                    .background(Capsule().fill(Color.white.opacity(0.05)))
                 }
-                .foregroundColor(.white.opacity(0.7)).padding(.horizontal, 12).padding(.vertical, 6).background(Capsule().fill(Color.white.opacity(0.05)))
+                
+                // 3. RIGHT: ADD/MENU BUTTON
+                Menu {
+                    Button(action: { showWebInput = true }) { Label("Web Article", systemImage: "safari") }
+                    Button(action: { showPDFImporter = true }) { Label("PDF Document", systemImage: "doc.text") }
+                    Button(action: { textContent = UIPasteboard.general.string ?? textContent }) { Label("Paste", systemImage: "doc.on.clipboard") }
+                    Divider()
+                    Button(role: .destructive, action: { textContent = "" }) { Label("Clear Text", systemImage: "trash") }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 18, weight: .semibold))
+                        .rotationEffect(.degrees(90))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.white.opacity(0.1)))
+                }
+                
+                Spacer()
             }
-            HStack(spacing: 30) {
+            .padding(.horizontal, 24)
+            
+            // --- PLAYER CONTROLS ---
+            HStack(spacing: 40) {
                 Button { haptic(); tts.seek(by: -10) } label: { Image(systemName: "gobackward.10").font(.title2) }.disabled(tts.state == .stopped || tts.state == .buffering)
                 Button {
-                    haptic(); if tts.state == .stopped { tts.play(text: text) } else { tts.pauseResume() }
+                    haptic(); if tts.state == .stopped { tts.play(text: textContent) } else { tts.pauseResume() }
                 } label: {
                     ZStack {
                         Circle().fill(accentGradient).frame(width: 64, height: 64).shadow(color: .blue.opacity(0.3), radius: 10, y: 5)
@@ -503,84 +571,117 @@ struct ProPlayerPanel: View {
                 Button { haptic(); tts.seek(by: 10) } label: { Image(systemName: "goforward.10").font(.title2) }.disabled(tts.state == .stopped || tts.state == .buffering)
             }.foregroundColor(.white)
         }
-        .padding(.top, 20).padding(.bottom, 10).frame(maxWidth: .infinity)
+        .padding(.top, 24)
+        .padding(.bottom, 10).frame(maxWidth: .infinity)
         .background(
-            UnevenRoundedRectangle(topLeadingRadius: 30, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 30)
-                .fill(Color(red: 0.14, green: 0.14, blue: 0.16)).ignoresSafeArea().shadow(color: .black.opacity(0.3), radius: 20, y: -5)
+            UnevenRoundedRectangle(topLeadingRadius: 32, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 32)
+                .fill(panelColor).ignoresSafeArea().shadow(color: .black.opacity(0.4), radius: 20, y: -5)
         )
     }
     func haptic() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
 }
 
-// MARK: - 6. AI CHAT UI
+// MARK: - 6. AI DRAWER (BEHIND PLAYER)
 
-struct AIChatView: View {
+struct AIOverlayPanel: View {
     @ObservedObject var client: FreeAIClient
     var contextText: String
+    @Binding var showAIChat: Bool
+    var panelColor: Color
+    
     @State private var inputText = ""
     @State private var showHistory = false
-    @Environment(\.dismiss) var dismiss
     
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // MESSAGES LIST
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 16) {
-                            if let session = client.currentSession {
-                                if session.messages.isEmpty {
-                                    VStack(spacing: 20) {
-                                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                                            .font(.system(size: 50))
-                                            .foregroundColor(.gray.opacity(0.5))
-                                        Text("Start a new conversation").font(.headline).foregroundColor(.gray)
-                                    }
-                                    .frame(maxWidth: .infinity).padding(.top, 50)
-                                } else {
-                                    ForEach(session.messages) { msg in ChatBubble(message: msg) }
-                                }
-                            }
-                            if client.isLoading {
-                                HStack { Spacer(); ProgressView(); Spacer() }.padding()
-                            }
-                            Spacer().frame(height: 20)
-                        }
-                        .padding()
-                    }
-                    .onChange(of: client.currentSession?.messages.count) { _, _ in
-                        if let last = client.currentSession?.messages.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
-                    }
-                }
+        VStack(spacing: 0) {
+            
+            // --- HANDLE & HEADER ---
+            VStack(spacing: 8) {
+                Capsule()
+                    .fill(Color.white.opacity(0.2))
+                    .frame(width: 40, height: 5)
+                    .padding(.top, 12)
+                    .onTapGesture { withAnimation { showAIChat = false } }
                 
-                // INPUT AREA
-                HStack(spacing: 10) {
-                    TextField("Ask about the text...", text: $inputText)
-                        .padding(12).background(Color(white: 0.15)).cornerRadius(24).foregroundColor(.white)
-                        .submitLabel(.send).onSubmit { sendMessage() }
-                    
-                    Button(action: sendMessage) {
-                        Image(systemName: "arrow.up.circle.fill").font(.system(size: 34)).symbolRenderingMode(.hierarchical).foregroundColor(.blue)
+                HStack {
+                    Button { client.createNewSession() } label: {
+                        Image(systemName: "square.and.pencil").foregroundColor(.white.opacity(0.7))
                     }
-                    .disabled(client.isLoading || inputText.isEmpty)
-                }
-                .padding().background(.regularMaterial)
-            }
-            .navigationTitle(client.currentSession?.title ?? "Ask AI")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
-                ToolbarItem(placement: .primaryAction) {
-                    HStack(spacing: 20) {
-                        Button { client.createNewSession() } label: { Image(systemName: "square.and.pencil") }
-                        Button { showHistory = true } label: { Image(systemName: "clock.arrow.circlepath") }
+                    Spacer()
+                    Text(client.currentSession?.title ?? "AI Assistant")
+                        .font(.headline)
+                        .foregroundColor(.white.opacity(0.9))
+                    Spacer()
+                    Button { showHistory = true } label: {
+                        Image(systemName: "clock").foregroundColor(.white.opacity(0.7))
                     }
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 10)
             }
-            .sheet(isPresented: $showHistory) { HistoryView(client: client) }
-            .background(Color(red: 0.08, green: 0.08, blue: 0.1).ignoresSafeArea())
+            .background(panelColor)
+            .gesture(DragGesture().onEnded { val in
+                if val.translation.height > 50 { withAnimation { showAIChat = false } }
+            })
+            
+            // --- CHAT CONTENT ---
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        if let session = client.currentSession {
+                            if session.messages.isEmpty {
+                                VStack(spacing: 20) {
+                                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                                        .font(.system(size: 40))
+                                        .foregroundColor(.gray.opacity(0.4))
+                                    Text("Ask about the text").font(.subheadline).foregroundColor(.gray)
+                                }
+                                .frame(maxWidth: .infinity).padding(.top, 40)
+                            } else {
+                                ForEach(session.messages) { msg in ChatBubble(message: msg) }
+                            }
+                        }
+                        if client.isLoading {
+                            HStack { Spacer(); ProgressView().tint(.white); Spacer() }.padding()
+                        }
+                        Spacer().frame(height: 10)
+                    }
+                    .padding()
+                }
+                .onChange(of: client.currentSession?.messages.count) { _, _ in
+                    if let last = client.currentSession?.messages.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                }
+            }
+            .background(panelColor)
+            
+            // --- INPUT AREA ---
+            HStack(spacing: 10) {
+                TextField("Ask...", text: $inputText)
+                    .padding(12)
+                    .background(Color(white: 0.2))
+                    .cornerRadius(20)
+                    .foregroundColor(.white)
+                    .submitLabel(.send)
+                    .onSubmit { sendMessage() }
+                
+                Button(action: sendMessage) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 32))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundColor(.blue)
+                }
+                .disabled(client.isLoading || inputText.isEmpty)
+            }
+            .padding(.horizontal)
+            .padding(.top, 10)
+            .padding(.bottom, 185) // Kept at 185 (Goldilocks zone)
+            .background(panelColor)
         }
-        .preferredColorScheme(.dark)
+        .frame(maxHeight: UIScreen.main.bounds.height * 0.85)
+        .background(panelColor)
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 32, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 32))
+        .shadow(color: .black.opacity(0.5), radius: 20, y: -5)
+        .sheet(isPresented: $showHistory) { HistoryView(client: client) }
     }
     
     func sendMessage() {
@@ -590,7 +691,7 @@ struct AIChatView: View {
     }
 }
 
-// MARK: - 7. HISTORY UI (Redesigned for No Overlap)
+// MARK: - 7. HISTORY UI & BUBBLES
 
 struct HistoryView: View {
     @ObservedObject var client: FreeAIClient
@@ -607,21 +708,13 @@ struct HistoryView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(session.title.isEmpty ? "New Chat" : session.title)
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                                
+                                    .font(.headline).foregroundColor(.white).lineLimit(1)
                                 Text(session.date.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
+                                    .font(.caption).foregroundColor(.gray)
                             }
-                            
                             Spacer()
-                            
                             if session.id == client.currentSessionId {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.title3)
-                                    .foregroundColor(.blue)
+                                Image(systemName: "checkmark.circle.fill").font(.title3).foregroundColor(.blue)
                             }
                         }
                         .padding(.vertical, 4)
@@ -645,16 +738,15 @@ struct ChatBubble: View {
     var body: some View {
         HStack(alignment: .bottom) {
             if message.isUser { Spacer() }
-            
             VStack(alignment: message.isUser ? .trailing : .leading) {
                 Text(message.text)
-                    .padding(14)
-                    .background(message.isUser ? Color.blue : Color(white: 0.2))
+                    .padding(12)
+                    .background(message.isUser ? Color.blue : Color(white: 0.22))
                     .foregroundColor(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: message.isUser ? .trailing : .leading)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .frame(maxWidth: UIScreen.main.bounds.width * 0.70, alignment: message.isUser ? .trailing : .leading)
                     .fixedSize(horizontal: false, vertical: true)
-                
+                    .textSelection(.enabled) // ENABLED WORD-BY-WORD SELECTION
                 Text(message.date.formatted(.dateTime.hour().minute()))
                     .font(.caption2).foregroundColor(.gray).padding(.horizontal, 4)
             }
