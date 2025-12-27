@@ -20,11 +20,6 @@ jobs:
           
           # Read the uploaded file and remove @main app struct if present
           if [ -f "Sources/${{ github.event.inputs.file_name }}" ]; then
-            # Remove @main, the App struct, and keep only the views
-            sed -E '/@main/d; /struct.*App.*\{/,/^struct|^$|^\/\//{ /WindowGroup|Scene|var body: some Scene/d; }' \
-              "Sources/${{ github.event.inputs.file_name }}" > BuildApp/ContentView.swift
-            
-            # If sed didn't work well, use a smarter approach with awk
             cat "Sources/${{ github.event.inputs.file_name }}" | awk '
               /@main/ { skip=1; next }
               /struct [A-Za-z]+App.*:.*App/ { skip=1; brace=1; next }
@@ -99,17 +94,14 @@ jobs:
         run: |
           cd BuildApp
           
-          # Find iOS Simulator SDK
           SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
           echo "Using SDK: $SDK_PATH"
           
-          # Get the target triple for simulator
           ARCH="arm64"
           TARGET="${ARCH}-apple-ios16.0-simulator"
           
           echo "Building for target: $TARGET"
           
-          # Compile with proper flags for iOS Simulator
           xcrun swiftc \
             -sdk "$SDK_PATH" \
             -target "$TARGET" \
@@ -138,15 +130,13 @@ jobs:
           # Zip the app bundle
           zip -r app.zip BuildApp.app
           
-          echo "Uploading to Appetize.io..."
+          echo "Uploading to Appetize.io using v1 API..."
           
-          # Upload to Appetize (update existing app)
-          RESPONSE=$(curl -s -X POST \
-            --http1.1 \
-            -H "Authorization: $APPETIZE_TOKEN" \
+          # Use Appetize v1 API which accepts multipart form data
+          RESPONSE=$(curl -s \
+            "https://api.appetize.io/v1/apps/zvc4brtsspoktczlbrs54s3mhi?token=$APPETIZE_TOKEN" \
             -F "file=@app.zip" \
-            -F "platform=ios" \
-            "https://api.appetize.io/v2/apps/zvc4brtsspoktczlbrs54s3mhi")
+            -F "platform=ios")
           
           echo "Appetize Response:"
           echo "$RESPONSE"
@@ -155,6 +145,37 @@ jobs:
           if echo "$RESPONSE" | grep -q "publicKey"; then
             echo "✅ Upload successful!"
           else
-            echo "❌ Upload may have failed"
-            exit 1
+            echo "Trying alternative upload method..."
+            
+            # Alternative: Create new app if update fails
+            RESPONSE2=$(curl -s \
+              "https://api.appetize.io/v1/apps?token=$APPETIZE_TOKEN" \
+              -F "file=@app.zip" \
+              -F "platform=ios")
+            
+            echo "Alternative Response:"
+            echo "$RESPONSE2"
+            
+            if echo "$RESPONSE2" | grep -q "publicKey"; then
+              echo "✅ Upload successful (new app created)!"
+              echo "Note: You may need to update the publicKey in SwiftIDE"
+            else
+              echo "❌ Upload failed"
+              exit 1
+            fi
           fi
+```
+
+## Key Changes
+
+1. **Using Appetize v1 API** instead of v2 - the v1 API accepts multipart form data with `file=@app.zip`
+
+2. **Token passed as query parameter** - v1 API uses `?token=` instead of Authorization header
+
+3. **Fallback to create new app** - if updating fails, it will try to create a new app
+
+## Make Sure Your Secret is Correct
+
+Your `APPETIZE_TOKEN` secret should be just the API token value, like:
+```
+tok_abc123xyz789...
