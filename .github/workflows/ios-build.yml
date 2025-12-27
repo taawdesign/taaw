@@ -1,11 +1,11 @@
-name: Build IPA
+name: Build Any App
 
 on:
-  workflow_dispatch: # Allows you to manually click a button to build
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
       - name: Checkout repository
@@ -17,7 +17,7 @@ jobs:
       - name: Generate Xcode Project
         run: xcodegen generate
 
-      - name: Install the Apple Certificate and Profile
+      - name: Install Certificates
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
@@ -45,26 +45,34 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
 
-      - name: Build Archive
+      - name: Build Archive (Generic)
         run: |
-          xcodebuild -project ProReader.xcodeproj \
-          -scheme ProReader \
+          # AUTOMATICALLY FIND THE PROJECT NAME
+          PROJECT_NAME=$(ls -d *.xcodeproj | head -n 1)
+          SCHEME_NAME=$(basename "$PROJECT_NAME" .xcodeproj)
+          echo "Detected Project: $PROJECT_NAME with Scheme: $SCHEME_NAME"
+
+          xcodebuild -project "$PROJECT_NAME" \
+          -scheme "$SCHEME_NAME" \
           -sdk iphoneos \
           -configuration Release \
-          -archivePath $PWD/build/ProReader.xcarchive \
+          -archivePath $PWD/build/App.xcarchive \
           clean archive \
           CODE_SIGN_IDENTITY="Apple Development" \
           CODE_SIGN_STYLE="Manual"
 
       - name: Export IPA
         run: |
-          # Export the IPA manually to avoid needing an ExportOptions.plist
+          # Find the .app name inside the archive
+          APP_PATH=$(find build/App.xcarchive/Products/Applications -name "*.app" | head -n 1)
+          APP_NAME=$(basename "$APP_PATH" .app)
+          
           mkdir Payload
-          cp -r build/ProReader.xcarchive/Products/Applications/ProReader.app Payload/
-          zip -r ProReader.ipa Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r "$APP_NAME.ipa" Payload
 
-      - name: Upload IPA Artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ProReader-IPA
-          path: ProReader.ipa
+          name: App-Binary
+          path: "*.ipa"
