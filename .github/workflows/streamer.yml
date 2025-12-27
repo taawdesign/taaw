@@ -1,0 +1,24 @@
+name: Streamer
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_name:
+        description: 'Swift file to build'
+        required: true
+
+jobs:
+  build-and-deploy:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build iOS App
+        run: |
+          # Your build commands here
+          
+      - name: Upload to Appetize
+        env:
+          APPETIZE_TOKEN: ${{ secrets.APPETIZE_TOKEN }}
+        run: |
+          # Upload .app to Appetize.io
