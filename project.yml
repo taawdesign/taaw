@@ -1,8 +1,8 @@
-name: MAIN
+name: MARK
 options:
   bundleIdPrefix: neo.uniwalls
 targets:
-  MAIN:
+  MARK:
     type: application
     platform: iOS
     deploymentTarget: 17.0
