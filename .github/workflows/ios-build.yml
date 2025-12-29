@@ -17,19 +17,13 @@ jobs:
       - name: Generate Project
         run: xcodegen generate
         
-      - name: Get Project Name
-        id: project
-        run: |
-          PROJECT_NAME=$(grep "^name:" project.yml | head -1 | sed 's/name: *//')
-          echo "name=$PROJECT_NAME" >> $GITHUB_OUTPUT
-          
       - name: Build Archive
         run: |
           xcodebuild archive \
-            -project "${{ steps.project.outputs.name }}.xcodeproj" \
-            -scheme "${{ steps.project.outputs.name }}" \
+            -project New.xcodeproj \
+            -scheme New \
             -destination "generic/platform=iOS" \
-            -archivePath "build/${{ steps.project.outputs.name }}.xcarchive" \
+            -archivePath build/New.xcarchive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
@@ -37,14 +31,14 @@ jobs:
       - name: Export IPA (Unsigned)
         run: |
           mkdir -p Payload
-          cp -r "build/${{ steps.project.outputs.name }}.xcarchive/Products/Applications/${{ steps.project.outputs.name }}.app" Payload/
-          zip -r "${{ steps.project.outputs.name }}.ipa" Payload
+          cp -r build/New.xcarchive/Products/Applications/New.app Payload/
+          zip -r New.ipa Payload
           
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: build-${{ github.run_id }}
-          files: ${{ steps.project.outputs.name }}.ipa
+          files: New.ipa
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
