@@ -1,53 +1,50 @@
-
-Copy
-
-1name: iOS Build
-2on:
-3  workflow_dispatch:
-4    inputs:
-5      ref:
-6        default: "main"
-7jobs:
-8  build:
-9    permissions: write-all
-10    runs-on: macos-latest
-11    steps:
-12      - uses: actions/checkout@v3
-13      
-14      - name: Install XcodeGen
-15        run: brew install xcodegen
-16        
-17      - name: Generate Project
-18        run: xcodegen generate
-19        
-20      - name: Get Project Name
-21        id: project
-22        run: |
-23          PROJECT_NAME=$(grep "^name:" project.yml | head -1 | sed 's/name: *//')
-24          echo "name=$PROJECT_NAME" >> $GITHUB_OUTPUT
-25          
-26      - name: Build Archive
-27        run: |
-28          xcodebuild archive \
-29            -project "${{ steps.project.outputs.name }}.xcodeproj" \
-30            -scheme "${{ steps.project.outputs.name }}" \
-31            -destination "generic/platform=iOS" \
-32            -archivePath "build/${{ steps.project.outputs.name }}.xcarchive" \
-33            CODE_SIGN_IDENTITY="" \
-34            CODE_SIGNING_REQUIRED=NO \
-35            CODE_SIGNING_ALLOWED=NO
-36            
-37      - name: Export IPA (Unsigned)
-38        run: |
-39          mkdir -p Payload
-40          cp -r "build/${{ steps.project.outputs.name }}.xcarchive/Products/Applications/${{ steps.project.outputs.name }}.app" Payload/
-41          zip -r "${{ steps.project.outputs.name }}.ipa" Payload
-42          
-43      - name: Release
-44        uses: softprops/action-gh-release@v1
-45        with:
-46          tag_name: build-${{ github.run_id }}
-47          files: ${{ steps.project.outputs.name }}.ipa
-48          fail_on_unmatched_files: true
-49        env:
-50          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+name: iOS Build
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        default: "main"
+jobs:
+  build:
+    permissions: write-all
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install XcodeGen
+        run: brew install xcodegen
+        
+      - name: Generate Project
+        run: xcodegen generate
+        
+      - name: Get Project Name
+        id: project
+        run: |
+          PROJECT_NAME=$(grep "^name:" project.yml | head -1 | sed 's/name: *//')
+          echo "name=$PROJECT_NAME" >> $GITHUB_OUTPUT
+          
+      - name: Build Archive
+        run: |
+          xcodebuild archive \
+            -project "${{ steps.project.outputs.name }}.xcodeproj" \
+            -scheme "${{ steps.project.outputs.name }}" \
+            -destination "generic/platform=iOS" \
+            -archivePath "build/${{ steps.project.outputs.name }}.xcarchive" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+            
+      - name: Export IPA (Unsigned)
+        run: |
+          mkdir -p Payload
+          cp -r "build/${{ steps.project.outputs.name }}.xcarchive/Products/Applications/${{ steps.project.outputs.name }}.app" Payload/
+          zip -r "${{ steps.project.outputs.name }}.ipa" Payload
+          
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: build-${{ github.run_id }}
+          files: ${{ steps.project.outputs.name }}.ipa
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
